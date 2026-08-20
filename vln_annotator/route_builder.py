@@ -71,6 +71,32 @@ def is_generic_pass_object(desc: str) -> bool:
     return bool(_GENERIC_PASS_RE.search(desc)) if desc else True
 
 
+# ── Room transition helpers (v64) ────────────────────────────────────────────
+
+_GOOD_RM_WORDS = {
+    "kitchen", "living room", "dining room", "bedroom", "bathroom",
+    "office", "study", "library", "lounge", "family room", "game room",
+    "home theater", "laundry", "pantry", "den", "nursery", "gym",
+}
+_BAD_RM_WORDS = {
+    "hallway", "corridor", "stairwell", "staircase", "attic", "basement",
+    "foyer", "lobby", "entry", "area", "room", "space", "passage",
+    "landing", "gallery",
+}
+
+
+def _good_room_name(rm: str) -> str:
+    """Return canonical good room name for turn marker, or '' if suppressed."""
+    rm_low = rm.lower().strip()
+    for bad in _BAD_RM_WORDS:
+        if bad in rm_low:
+            return ""
+    for good in _GOOD_RM_WORDS:
+        if good in rm_low:
+            return good
+    return ""
+
+
 # ── Route string builder ──────────────────────────────────────────────────────
 
 def build_route(
@@ -149,11 +175,18 @@ def build_route(
                 base = f"turn {direction} at [{lm}]"
                 parts.append(f"{base} → [{ahead} ahead]" if ahead else base)
             elif rm:
-                # Room-only turns: sample and hide room name to prevent hallway inflation
+                # Room-only turns: allow good room names (kitchen, bedroom, living room, etc.)
+                # Suppress hallway/corridor/stairwell to prevent generic inflation (v64 fix).
                 if random.random() > p_turn_unanchored:
                     turn_idx += 1
                     continue
-                parts.append(f"turn {direction}")
+                good_rm = _good_room_name(rm)
+                if good_rm:
+                    # "→ enter [room]" notation → LLM writes "turn X and enter the room"
+                    # Avoids TURN_ANCHOR_RE match (which uses "at/into/past the X" patterns)
+                    parts.append(f"turn {direction} → enter [{good_rm}]")
+                else:
+                    parts.append(f"turn {direction}")  # suppress hallway/corridor/generic
             else:
                 parts.append(f"turn {direction}")
 
@@ -182,13 +215,15 @@ RULES:
 "through the X" (2-4 words). Prefer distinctive: "through the arched entry" over "through the doorway". \
 Reserve "through the doorway" only when the description specifically mentions a plain doorway.
 - When route has [pass: description]: the robot walks by an object — write "walk past the X" (3-5 words).
-- When a turn has (→ room) after the arrow: ONLY mention the specific room if it is the final destination. \
+- When a turn has "→ enter [room]" notation (e.g., "turn left → enter [kitchen]"): write \
+"turn left and enter the kitchen" or "turn left and walk into the kitchen". Use ONLY when this notation is in the route.
+- When a turn has (→ room) after the arrow without "enter": ONLY mention the room if it is the final destination. \
 Otherwise write "walk forward".
 - Turns with no brackets: write ONLY "turn left" or "turn right" — no objects
 - CRITICAL: Do NOT add turns unless the route shows them. Write "walk forward" not "walk toward the room".
 - Do NOT repeat any direction or landmark. Each segment is described exactly once.
-- ROOM NAMES: Do NOT write "walk into/through/down the hallway", "walk toward the bedroom", etc. \
-as mid-route steps. Write "walk forward" instead. Only name a room when it is the FINAL destination.
+- ROOM NAMES: Do NOT write "walk into/through/down the hallway", "walk toward the hallway" as mid-route steps. \
+Write "walk forward" instead. Only name a room when the route has "→ enter [room]" notation or it is the FINAL destination.
 - STYLE: Avoid starting with "Continue straight". Avoid overusing "wooden" for generic surfaces.
 - Endings vary: "Stop near X." / "Wait near X." / no explicit ending
 - Start verb is given — use it exactly\

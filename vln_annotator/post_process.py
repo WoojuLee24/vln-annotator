@@ -1,10 +1,11 @@
 """
 VLN Auto-Annotator — Post-Processing (Surgical Fixes)
 
-Three targeted fixes applied after LLM instruction generation:
+Four targeted fixes applied after LLM instruction generation:
   1. doorway_fix    — remove hallucinated "through the doorway" when no real passage exists
   2. walk_past_fix  — remove hallucinated "walk past the X" when no real objects to pass
   3. hallway_fix    — remove mid-route hallway phrases when goal is not a hallway
+  4. floor_stop_fix — replace floor/tile/carpet-based stop phrases with navigable alternatives
 """
 import re
 from typing import Dict, Optional, Tuple
@@ -23,6 +24,21 @@ _MIDROUTE_HALLWAY_RE = re.compile(
     r'\b(?:walk(?:ing)?|go(?:ing)?|head(?:ing)?|continue(?:s)?|proceed(?:ing)?)\s+'
     r'(?:through|down|along|into|to|toward)\s+the\s+hallway\b',
     re.IGNORECASE,
+)
+
+# Floor/surface words that make bad stop landmarks (v65)
+_FLOOR_STOP_RE = re.compile(
+    r'\b(Stop|Wait)\b(?:.{0,80}?)'
+    r'\b(floor(?:ing)?|tile(?:s)?|carpet(?:ing)?|linoleum|mat|'
+    r'hardwood\s+floor|tiled\s+floor|marble\s+floor|wood\s+floor|'
+    r'polished\s+floor|light[\-\s]colored\s+floor|white\s+floor|'
+    r'grey\s+floor|gray\s+floor)\b.*$',
+    re.IGNORECASE | re.DOTALL,
+)
+_RUG_STOP_RE = re.compile(
+    r'\b(Stop|Wait)\s+(?:near|at|by|in\s+front\s+of|beside|next\s+to)\s+the\s+'
+    r'(?:\w+\s+)*(?:rug|mat|carpet|runner|doormat)\b.*$',
+    re.IGNORECASE | re.DOTALL,
 )
 
 
@@ -66,6 +82,46 @@ def apply_walk_past_fix(text: str, episode_midpoints: Dict) -> str:
     return fixed
 
 
+def apply_floor_stop_fix(text: str) -> str:
+    """
+    Replace floor/tile/carpet-based stop phrases with navigable alternatives (v65).
+    'Stop in front of the white hallway floor' → 'Stop in the hallway.'
+    'Stop at the light-colored floor' → 'Stop.'
+
+    Root cause: VLM Phase 1 goal descriptions sometimes describe only the floor surface
+    when the stop location is a featureless area. These non-landmarks confuse navigation.
+    """
+    for pattern in (_FLOOR_STOP_RE, _RUG_STOP_RE):
+        m = pattern.search(text)
+        if not m:
+            continue
+        action = m.group(1)  # "Stop" or "Wait"
+        prefix = text[:m.start()].rstrip()
+        full_lower = text.lower()
+        if re.search(r'\bhallway\b', full_lower):
+            replacement = f"{action} in the hallway."
+        elif re.search(r'\bkitchen\b', full_lower):
+            replacement = f"{action} in the kitchen."
+        elif re.search(r'\bbedroom\b', full_lower):
+            replacement = f"{action} in the bedroom."
+        elif re.search(r'\bliving room\b', full_lower):
+            replacement = f"{action} in the living room."
+        elif re.search(r'\bdining room\b', full_lower):
+            replacement = f"{action} in the dining room."
+        elif re.search(r'\bbathroom\b', full_lower):
+            replacement = f"{action} in the bathroom."
+        elif re.search(r'\boffice\b', full_lower):
+            replacement = f"{action} in the office."
+        elif re.search(r'\bstair(?:case|s|way)\b', full_lower):
+            replacement = f"{action} at the stairs."
+        elif re.search(r'\bdoorway|doorframe\b', full_lower):
+            replacement = f"{action} in the doorway."
+        else:
+            replacement = f"{action}."
+        return prefix + " " + replacement
+    return text
+
+
 def apply_hallway_fix(text: str, stop_phrase: str) -> str:
     """
     Remove mid-route hallway phrases when the goal is not a hallway.
@@ -106,6 +162,10 @@ def apply_all_fixes(
         n += 1; original = text
 
     text = apply_hallway_fix(text, stop_phrase)
+    if text != original:
+        n += 1; original = text
+
+    text = apply_floor_stop_fix(text)
     if text != original:
         n += 1
 
