@@ -1,0 +1,20 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.egg-info/
+dist/
+build/
+.venv/
+venv/
+
+# Output files (large — push to NAS instead)
+outputs/datasets/*.json.gz
+outputs/checkpoints/*.json
+
+# Data (symlink or mount separately)
+data/
+
+# Editor
+.vscode/
+*.swp
