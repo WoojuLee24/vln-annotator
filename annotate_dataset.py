@@ -45,6 +45,9 @@ def parse_args() -> argparse.Namespace:
                         "R2R/Matterport behaviour (default), 'transit' retargets the "
                         "prompt examples and room whitelist to a station. The published "
                         "calibration describes 'house', so compare rather than assume")
+    p.add_argument("--no-extra-rules", action="store_true",
+                   help="run the original instruction prompt untouched, without the "
+                        "appended rules (route_builder.EXTRA_RULES). Use as a control")
     p.add_argument("--max-calls", type=int, default=None,
                    help="abort before sending if the run needs more than N calls. "
                         "Recommended for metered providers, e.g. --max-calls 20")
@@ -107,6 +110,7 @@ async def main() -> None:
     cfg = AnnotatorConfig(
         backend=backend,
         domain=args.domain,
+        extra_rules=not args.no_extra_rules,
         max_calls=args.max_calls,
         vllm_base_url=args.vllm_url,
         vllm_model=args.vllm_model,

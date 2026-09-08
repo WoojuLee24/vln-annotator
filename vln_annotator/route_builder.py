@@ -73,19 +73,30 @@ def is_generic_pass_object(desc: str) -> bool:
 
 # ── Room transition helpers (v64) ────────────────────────────────────────────
 
-# Room whitelist. Historically hardcoded to house rooms, which meant a transit
-# station had no word that could pass -- "library" reached an instruction from
-# here, not from the scene. Now sourced from the active domain profile;
-# set_domain() is called once per run. Default keeps the original set.
-from .domains import get_domain as _get_domain
+_GOOD_RM_WORDS = {
+    "kitchen", "living room", "dining room", "bedroom", "bathroom",
+    "office", "study", "library", "lounge", "family room", "game room",
+    "home theater", "laundry", "pantry", "den", "nursery", "gym",
+}
 
-_GOOD_RM_WORDS = set(_get_domain("house").room_words)
+# ADDED — the set above is the original house-room whitelist and stays as-is.
+# It is a whitelist, so a transit station had no word that could pass it and
+# "library" reached an instruction from here rather than from the scene.
+# set_domain() swaps it per run; domain "house" restores the original exactly.
+_ORIGINAL_RM_WORDS = frozenset(_GOOD_RM_WORDS)
 
 
 def set_domain(name: str) -> None:
     """Swap the room whitelist for the named scene domain (see domains.py)."""
     global _GOOD_RM_WORDS
-    _GOOD_RM_WORDS = set(_get_domain(name).room_words)
+    from .domains import get_domain
+    words = frozenset(get_domain(name).room_words)
+    if name == "house" and words != _ORIGINAL_RM_WORDS:
+        raise RuntimeError(
+            "domain 'house' no longer matches the original room whitelist; "
+            "put the change in a new domain profile instead."
+        )
+    _GOOD_RM_WORDS = set(words)
 _BAD_RM_WORDS = {
     "hallway", "corridor", "stairwell", "staircase", "attic", "basement",
     "foyer", "lobby", "entry", "area", "room", "space", "passage",
@@ -232,11 +243,26 @@ Otherwise write "walk forward".
 - Do NOT repeat any direction or landmark. Each segment is described exactly once.
 - ROOM NAMES: Do NOT write "walk into/through/down the hallway", "walk toward the hallway" as mid-route steps. \
 Write "walk forward" instead. Only name a room when the route has "→ enter [room]" notation or it is the FINAL destination.
-- DISTANCES: the route notation gives distances ("straight 4m") for your own reasoning ONLY. \
-NEVER write a distance in the instruction — no "3 meters", "4m", "five feet". Measured on the \
-10,819 R2R training instructions, a digit followed by a distance unit occurs in 10 of them (0.09%); \
-humans write "walk down the hall", not "walk 4 meters".
 - STYLE: Avoid starting with "Continue straight". Avoid overusing "wooden" for generic surfaces.
 - Endings vary: "Stop near X." / "Wait near X." / no explicit ending
 - Start verb is given — use it exactly\
 """
+
+# ── ADDED rules — appended, never edited into the prompt above ────────────────
+#
+# The prompt above is the original and stays byte-identical so it can be re-run
+# as a control. Extra rules are concatenated at call time instead.
+EXTRA_RULES = """\
+- DISTANCES: the route notation gives distances ("straight 4m") for your own reasoning ONLY. \
+NEVER write a distance in the instruction — no "3 meters", "4m", "five feet". Measured on the \
+10,819 R2R training instructions, a digit followed by a distance unit occurs in 10 of them (0.09%); \
+humans write "walk down the hall", not "walk 4 meters".\
+"""
+
+
+def instruction_system_prompt(extra_rules: bool = True) -> str:
+    """Original prompt, optionally with EXTRA_RULES appended."""
+    if not extra_rules:
+        return INSTRUCTION_SYSTEM_PROMPT
+    return INSTRUCTION_SYSTEM_PROMPT.rstrip("\n") + "\n" + EXTRA_RULES
+

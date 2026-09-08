@@ -25,6 +25,9 @@ class AnnotatorConfig:
     # "house" reproduces the original behaviour and is what the published
     # calibration numbers describe. "transit" retargets it to a station.
     domain: str = "house"
+    # Append route_builder.EXTRA_RULES to the original instruction prompt.
+    # Set False to run the original prompt untouched, as a control.
+    extra_rules: bool = True
 
     # ── Cost guard (metered providers) ───────────────────────────────────────
     # Checked before the first request, so an over-budget run costs nothing.

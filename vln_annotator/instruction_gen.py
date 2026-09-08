@@ -13,7 +13,7 @@ from typing import Dict, List, Optional, Tuple
 from .config import AnnotatorConfig
 from .llm_backend import batch_call_async
 from .post_process import apply_all_fixes
-from .route_builder import INSTRUCTION_SYSTEM_PROMPT
+from .route_builder import INSTRUCTION_SYSTEM_PROMPT, instruction_system_prompt
 
 
 # ── Regex helpers (calibrated from v36-v62 analysis) ─────────────────────────
@@ -286,6 +286,7 @@ def build_instruction_prompt(
     n_ahead_markers: int,
     n_midpoint_markers: int,
     similar_examples: Optional[List[str]] = None,
+    extra_rules: bool = True,
 ) -> str:
     """
     Build the full LLM prompt for Phase 2 instruction generation.
@@ -340,7 +341,7 @@ def build_instruction_prompt(
     )
 
     prompt = (
-        f"{INSTRUCTION_SYSTEM_PROMPT}\n\n"
+        f"{instruction_system_prompt(extra_rules)}\n\n"
         f"Same-building examples:\n{ex_block}\n\n"
         f"Write ONE instruction for:\n"
         f"  Route: {route}\n"

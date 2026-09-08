@@ -18,10 +18,48 @@ from .llm_backend import batch_call_async, image_to_base64
 
 
 # ── Prompts ───────────────────────────────────────────────────────────────────
+#
+# ORIGINAL PROMPTS — kept verbatim, do not edit.
+# These are the exact strings the published calibration (GT-match 0.951,
+# avg_turns/ep 0.59, hallway 19.2%) was measured against. New prompts go
+# BELOW as separate functions, never by editing these, so that "what changed"
+# is always one diff away and the original can be re-run as a control.
 
-# Prompts are built per scene domain: the examples used to be house furniture
-# unconditionally, which pushed a transit station toward house vocabulary.
-# domains.HOUSE reproduces the original strings exactly. See domains.py.
+_FRAME_PROMPT = (
+    "Describe this indoor scene for a navigation instruction. "
+    "In 1-2 sentences cover: the room type, dominant objects, and the most "
+    "prominent landmark visible. Be concrete and specific (colors, materials). "
+    "Example: 'Starting in a bright hallway with brown wooden double doors on "
+    "the right. The polished stone floor leads forward.'"
+)
+
+_MIDPOINT_PROMPT = (
+    "A robot navigating indoors has just stepped to this position. "
+    "Identify the single most prominent furniture item or object visible directly ahead. "
+    "Reply with a noun phrase only (2-5 words), e.g.: 'dark wooden dining table', "
+    "'grey upholstered sofa', 'white marble fireplace', 'tall wooden bookshelf'. "
+    "If only walls or floors are visible with no distinct furniture, reply: 'open space'. "
+    "Reply with ONLY the noun phrase, nothing else."
+)
+
+_TURN_SIDE_PROMPT = (
+    "Look at the object or landmark visible in the direction the robot is about to turn. "
+    "Give a 2-4 word noun phrase identifying this object (e.g. 'grey stone pillar', "
+    "'brown wooden cabinet', 'white kitchen counter'). "
+    "If nothing distinctive is visible, reply: 'nothing'. "
+    "Reply with ONLY the noun phrase."
+)
+
+# ── Domain-aware prompts — ADDED ──────────────────────────────────────────────
+#
+# Same wording as the originals above, with two things made variable:
+#   1. the example vocabulary (originals hardcode house furniture, which gave a
+#      subway station no word it could use) -> comes from domains.py
+#   2. the turn direction (the original asked for "the direction the robot is
+#      about to turn" without ever saying which side that was)
+#
+# _assert_house_parity() below guarantees domain "house" reproduces the
+# originals character for character, so the calibration still describes it.
 
 def _frame_prompt(dom) -> str:
     return (
@@ -43,21 +81,42 @@ def _midpoint_prompt(dom) -> str:
 
 
 def _turn_side_prompt(dom, direction: str = None) -> str:
-    # The original prompt said "the direction the robot is about to turn" without
-    # ever saying which direction that was. With a single image the model cannot
-    # know, so it named whatever was most prominent -- often on the wrong side.
-    # The direction is pure geometry and is now passed in.
-    where = (f"on the {direction}-hand side of this view"
-             if direction in ("left", "right")
+    known = direction in ("left", "right")
+    where = (f"on the {direction}-hand side of this view" if known
              else "in the direction the robot is about to turn")
-    return (
-        f"The robot is about to turn {direction}. " if direction in ("left", "right") else ""
-    ) + (
+    lead = f"The robot is about to turn {direction}. " if known else ""
+    return lead + (
         f"Look at the object or landmark visible {where}. "
         f"Give a 2-4 word noun phrase identifying this object (e.g. {quoted(dom.landmark_examples)}). "
         "If nothing distinctive is visible, reply: 'nothing'. "
         "Reply with ONLY the noun phrase."
     )
+
+
+def _assert_house_parity() -> None:
+    """
+    Fail loudly at import if the "house" profile has drifted from the originals.
+
+    Silent drift is the real hazard here: the run would still succeed and the
+    output would still look plausible, while no longer being the thing the
+    calibration numbers describe.
+    """
+    from .domains import HOUSE
+    for name, original, rebuilt in (
+        ("_FRAME_PROMPT", _FRAME_PROMPT, _frame_prompt(HOUSE)),
+        ("_MIDPOINT_PROMPT", _MIDPOINT_PROMPT, _midpoint_prompt(HOUSE)),
+        ("_TURN_SIDE_PROMPT", _TURN_SIDE_PROMPT, _turn_side_prompt(HOUSE, None)),
+    ):
+        if original != rebuilt:
+            raise RuntimeError(
+                f"domain 'house' no longer reproduces {name}. "
+                f"Either revert the change or move it into a new domain profile.\n"
+                f"  original: {original!r}\n  rebuilt : {rebuilt!r}"
+            )
+
+
+_assert_house_parity()
+
 
 _REJECT_MID_RE = re.compile(
     r'^(open\s+space|plain|featureless|empty|nothing|no\s+furniture|a\s+room|the\s+room|'
@@ -90,7 +149,6 @@ def _clean_turn_side(raw: str) -> Optional[str]:
     s = re.sub(r'^(a|an|the)\s+', '', raw.strip(), flags=re.IGNORECASE).strip()
     words = s.split()
     return ' '.join(words[:5]) if 2 <= len(words) <= 8 else None
-
 
 # ── Phase 1a: Per-frame vision ────────────────────────────────────────────────
 

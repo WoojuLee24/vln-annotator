@@ -407,6 +407,7 @@ async def run(
             n_ahead_markers=n_ahead,
             n_midpoint_markers=n_mid,
             similar_examples=examples,
+            extra_rules=cfg.extra_rules,
         )
         tasks.append({"id": str(eid), "prompt": prompt})
 
