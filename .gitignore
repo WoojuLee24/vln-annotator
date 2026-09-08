@@ -18,3 +18,7 @@ data/
 # Editor
 .vscode/
 *.swp
+
+# Secrets (see keys.env.example)
+keys.env
+docker/.env

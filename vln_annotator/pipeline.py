@@ -280,6 +280,7 @@ async def run(
             checkpoint=p1a_ckpt,
             base_url=cfg.vllm_base_url, model=cfg.vllm_model, api_key=cfg.vllm_api_key,
             concurrency=cfg.concurrency_vision,
+            backend=cfg.backend, max_calls=cfg.max_calls, dry_run_dir=cfg.dry_run_dir,
         )
         _save_ckpt(p1a_ckpt, p1a_ckpt_path)
     else:
@@ -294,6 +295,7 @@ async def run(
             checkpoint=p1b_ckpt,
             base_url=cfg.vllm_base_url, model=cfg.vllm_model, api_key=cfg.vllm_api_key,
             concurrency=cfg.concurrency_vision,
+            backend=cfg.backend, max_calls=cfg.max_calls, dry_run_dir=cfg.dry_run_dir,
         )
         _save_ckpt(p1b_ckpt, p1b_ckpt_path)
     else:
@@ -308,6 +310,7 @@ async def run(
             checkpoint=p1c_ckpt,
             base_url=cfg.vllm_base_url, model=cfg.vllm_model, api_key=cfg.vllm_api_key,
             concurrency=cfg.concurrency_vision,
+            backend=cfg.backend, max_calls=cfg.max_calls, dry_run_dir=cfg.dry_run_dir,
         )
         _save_ckpt(p1c_ckpt, p1c_ckpt_path)
     else:

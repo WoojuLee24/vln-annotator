@@ -16,6 +16,9 @@ dependencies = [
 
 [project.optional-dependencies]
 dev = ["pytest", "black", "isort"]
+# Anthropic has no OpenAI-compatible endpoint, so it needs its own SDK.
+# Everything else (vLLM, OpenAI, Gemini) rides on `openai`.
+api = ["anthropic>=0.40"]
 
 [project.scripts]
 vln-annotate = "vln_annotator.pipeline:main_cli"

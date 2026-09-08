@@ -378,6 +378,9 @@ async def generate_instructions(
         max_tokens=cfg.max_new_tokens,
         temperature=cfg.temperature,
         concurrency=cfg.concurrency_instruct,
+        backend=cfg.backend,
+        max_calls=cfg.max_calls,
+        dry_run_dir=cfg.dry_run_dir,
     )
 
 

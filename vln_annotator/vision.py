@@ -87,6 +87,9 @@ async def describe_frames(
     model: str,
     api_key: str = "EMPTY",
     concurrency: int = 8,
+    backend: str = "vllm",
+    max_calls: "int | None" = None,
+    dry_run_dir: "Path | None" = None,
     max_tokens: int = 80,
 ) -> Dict:
     """
@@ -117,6 +120,7 @@ async def describe_frames(
     results = await batch_call_async(
         tasks, base_url=base_url, model=model, api_key=api_key,
         max_tokens=max_tokens, concurrency=concurrency,
+        backend=backend, max_calls=max_calls, dry_run_dir=dry_run_dir,
     )
 
     merged = dict(checkpoint)
@@ -138,6 +142,9 @@ async def classify_midpoints(
     model: str,
     api_key: str = "EMPTY",
     concurrency: int = 8,
+    backend: str = "vllm",
+    max_calls: "int | None" = None,
+    dry_run_dir: "Path | None" = None,
 ) -> Dict:
     """
     For each intermediate waypoint, identify the most prominent object ahead.
@@ -172,6 +179,7 @@ async def classify_midpoints(
     results = await batch_call_async(
         tasks, base_url=base_url, model=model, api_key=api_key,
         max_tokens=30, concurrency=concurrency,
+        backend=backend, max_calls=max_calls, dry_run_dir=dry_run_dir,
     )
 
     merged = dict(checkpoint)
@@ -194,6 +202,9 @@ async def describe_turn_sides(
     model: str,
     api_key: str = "EMPTY",
     concurrency: int = 8,
+    backend: str = "vllm",
+    max_calls: "int | None" = None,
+    dry_run_dir: "Path | None" = None,
 ) -> Dict:
     """
     At each turn viewpoint, describe the object visible in the turn direction.
@@ -223,6 +234,7 @@ async def describe_turn_sides(
     results = await batch_call_async(
         tasks, base_url=base_url, model=model, api_key=api_key,
         max_tokens=20, concurrency=concurrency,
+        backend=backend, max_calls=max_calls, dry_run_dir=dry_run_dir,
     )
 
     merged = dict(checkpoint)

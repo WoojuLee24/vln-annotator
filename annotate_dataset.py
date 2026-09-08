@@ -34,8 +34,19 @@ def parse_args() -> argparse.Namespace:
                    help="Directory with midpoint metadata (episode_XXXXXX/midpoints.json)")
 
     # LLM backend
+    p.add_argument("--backend", default="vllm",
+                   choices=["vllm", "openai", "gemini", "anthropic", "dry"],
+                   help="provider adapter. 'dry' makes no network call and dumps "
+                        "prompts to disk (default: vllm)")
+    p.add_argument("--dry-run", action="store_true",
+                   help="shorthand for --backend dry")
+    p.add_argument("--max-calls", type=int, default=None,
+                   help="abort before sending if the run needs more than N calls. "
+                        "Recommended for metered providers, e.g. --max-calls 20")
     p.add_argument("--vllm-url", default="http://10.77.32.231:8000/v1",
-                   help="vLLM server base URL (default: http://10.77.32.231:8000/v1)")
+                   help="base URL for OpenAI-compatible backends "
+                        "(default: http://10.77.32.231:8000/v1). Ignored by "
+                        "--backend anthropic, which uses its own endpoint")
     p.add_argument("--vllm-model", default="cyankiwi/gemma-4-31B-it-AWQ-4bit",
                    help="Model name served by vLLM")
     p.add_argument("--temperature", type=float, default=0.3)
@@ -79,12 +90,18 @@ def parse_args() -> argparse.Namespace:
 
 
 async def main() -> None:
+    # Parse first: --help must work in an environment with no provider SDKs
+    # installed, so nothing may be imported above this line.
+    args = parse_args()
+
     from vln_annotator.config import AnnotatorConfig
     from vln_annotator.pipeline import run
 
-    args = parse_args()
+    backend = "dry" if args.dry_run else args.backend
 
     cfg = AnnotatorConfig(
+        backend=backend,
+        max_calls=args.max_calls,
         vllm_base_url=args.vllm_url,
         vllm_model=args.vllm_model,
         temperature=args.temperature,
@@ -108,7 +125,10 @@ async def main() -> None:
     print(f"  GT path:       {args.gt_path}")
     print(f"  Frames dir:    {args.frames_dir}")
     print(f"  Midpoints dir: {args.midpoints_dir}")
-    print(f"  LLM:           {cfg.vllm_model}")
+    print(f"  Backend:       {cfg.backend}")
+    print(f"  LLM:           {cfg.vllm_model if cfg.backend != 'dry' else '(none)'}")
+    if cfg.backend in ("openai", "gemini", "anthropic") and cfg.max_calls is None:
+        print("  WARNING:       metered backend with no --max-calls cap")
     print(f"  Output:        {cfg.output_dir / cfg.output_name}")
     print(f"  Calibration:   p_stop={cfg.p_stop}, p_wait={cfg.p_wait}, "
           f"p_anchor={cfg.p_anchor_episode}, p_turn_unanchored={cfg.p_turn_unanchored}")

@@ -10,11 +10,19 @@ from typing import Optional
 @dataclass
 class AnnotatorConfig:
     # ── LLM backend ──────────────────────────────────────────────────────────
+    # backend selects the provider adapter (see vln_annotator/backends/):
+    #   vllm | openai | gemini | anthropic | dry
+    # "dry" makes no network call and dumps prompts to disk instead.
+    backend: str = "vllm"
     vllm_base_url: str = "http://10.77.32.231:8000/v1"
     vllm_model: str = "cyankiwi/gemma-4-31B-it-AWQ-4bit"
     vllm_api_key: str = "EMPTY"
     temperature: float = 0.3
     max_new_tokens: int = 256
+
+    # ── Cost guard (metered providers) ───────────────────────────────────────
+    # Checked before the first request, so an over-budget run costs nothing.
+    max_calls: Optional[int] = None
 
     # ── Concurrency ───────────────────────────────────────────────────────────
     concurrency_vision: int = 8   # parallel vision-description API calls
@@ -37,6 +45,7 @@ class AnnotatorConfig:
     # ── Output ────────────────────────────────────────────────────────────────
     output_dir: Path = Path("outputs/datasets")
     checkpoints_dir: Path = Path("outputs/checkpoints")
+    dry_run_dir: Path = Path("outputs/dry_run")
     output_name: str = "val_unseen_annotated.json.gz"
 
     def output_path(self) -> Path:
