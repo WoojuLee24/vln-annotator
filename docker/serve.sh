@@ -12,9 +12,13 @@ REPO="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 IMAGE="${IMAGE:-vln-annotator:latest}"
 MODEL="${1:-nvidia/Cosmos-Reason2-2B}"
 
-# GPU_UTIL 0.60 leaves room for a co-resident Isaac Sim job. Raise to ~0.85
-# once nothing else holds the card.
-GPU_UTIL="${GPU_UTIL:-0.60}"
+# Fraction of the card vLLM may use for weights + KV cache.
+# Beware: too low does not degrade, it fails outright with
+#   "No available memory for the cache blocks"
+# 0.55 on a 32 GB card is ~18 GB, and Cosmos-Reason1-7B weights alone are
+# 15.45 GiB -- nothing left for the cache. Lower this only for co-residency,
+# and keep (total x GPU_UTIL) at least ~6 GB above the weight size.
+GPU_UTIL="${GPU_UTIL:-0.85}"
 # The remote Gemma serves max_model_len=4096. Match it when A/B-ing backends,
 # otherwise the two runs do not see the same prompt budget.
 MAX_LEN="${MAX_LEN:-8192}"

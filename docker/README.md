@@ -62,7 +62,7 @@ a local `serve.sh` on `localhost` without extra plumbing.
 | `IMAGE` | `vln-annotator:latest` | |
 | `DATA` | `/media/TrainDataset` | `run.sh` |
 | `HF_CACHE` | `/media/TrainDataset/hf_cache` | `serve.sh` |
-| `GPU_UTIL` | `0.60` | `serve.sh`. Leaves room for a co-resident Isaac Sim job; raise to ~0.85 when the card is free |
+| `GPU_UTIL` | `0.85` | `serve.sh`. **Too low fails hard**, it does not degrade: `0.55` on a 32 GB card is ~18 GB and Cosmos-Reason1-7B weights are 15.45 GiB, leaving nothing for the KV cache — vLLM exits with *"No available memory for the cache blocks"*. Lower it only for co-residency, and keep `total x GPU_UTIL` at least ~6 GB above the weight size |
 | `MAX_LEN` | `8192` | `serve.sh`. **Set `4096` when A/B-ing against the remote Gemma** — it serves `max_model_len=4096`, and unequal prompt budgets make the comparison meaningless |
 | `PORT` | `8100` | `serve.sh` |
 
