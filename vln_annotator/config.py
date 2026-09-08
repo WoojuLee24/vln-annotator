@@ -20,6 +20,12 @@ class AnnotatorConfig:
     temperature: float = 0.3
     max_new_tokens: int = 256
 
+    # ── Scene domain ─────────────────────────────────────────────────────────
+    # Vocabulary profile for prompts and the room whitelist (see domains.py).
+    # "house" reproduces the original behaviour and is what the published
+    # calibration numbers describe. "transit" retargets it to a station.
+    domain: str = "house"
+
     # ── Cost guard (metered providers) ───────────────────────────────────────
     # Checked before the first request, so an over-budget run costs nothing.
     max_calls: Optional[int] = None

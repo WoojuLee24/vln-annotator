@@ -40,6 +40,11 @@ def parse_args() -> argparse.Namespace:
                         "prompts to disk (default: vllm)")
     p.add_argument("--dry-run", action="store_true",
                    help="shorthand for --backend dry")
+    p.add_argument("--domain", default="house", choices=["house", "transit"],
+                   help="scene vocabulary profile: 'house' reproduces the original "
+                        "R2R/Matterport behaviour (default), 'transit' retargets the "
+                        "prompt examples and room whitelist to a station. The published "
+                        "calibration describes 'house', so compare rather than assume")
     p.add_argument("--max-calls", type=int, default=None,
                    help="abort before sending if the run needs more than N calls. "
                         "Recommended for metered providers, e.g. --max-calls 20")
@@ -101,6 +106,7 @@ async def main() -> None:
 
     cfg = AnnotatorConfig(
         backend=backend,
+        domain=args.domain,
         max_calls=args.max_calls,
         vllm_base_url=args.vllm_url,
         vllm_model=args.vllm_model,
@@ -126,6 +132,7 @@ async def main() -> None:
     print(f"  Frames dir:    {args.frames_dir}")
     print(f"  Midpoints dir: {args.midpoints_dir}")
     print(f"  Backend:       {cfg.backend}")
+    print(f"  Domain:        {cfg.domain}")
     print(f"  LLM:           {cfg.vllm_model if cfg.backend != 'dry' else '(none)'}")
     if cfg.backend in ("openai", "gemini", "anthropic") and cfg.max_calls is None:
         print("  WARNING:       metered backend with no --max-calls cap")

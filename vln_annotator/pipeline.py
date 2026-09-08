@@ -35,8 +35,9 @@ from .instruction_gen import (
     print_stats,
     strip_material_adj,
 )
+from .domains import get_domain
 from .path_analysis import analyze_path
-from .route_builder import build_route, classify_pass_action
+from .route_builder import set_domain, build_route, classify_pass_action
 from .vision import classify_midpoints, describe_frames, describe_turn_sides
 
 
@@ -175,6 +176,25 @@ def _build_landmark_info(
     }
 
 
+
+def _turn_directions(episodes: List[Dict]) -> Dict[str, Dict[str, str]]:
+    """
+    {episode_id: {"turn_1": "left", "turn_2": "right", ...}} for the first 3 turns.
+
+    Phase 1c needs to know which way the robot turns, and analyze_path already
+    knows -- it is pure geometry, no model call. It simply used to run after
+    phase 1c. Labels match the exporter's turn_1..turn_3 image naming, i.e. the
+    Nth turn along the path.
+    """
+    out: Dict[str, Dict[str, str]] = {}
+    for ep in episodes:
+        prims = analyze_path(ep["reference_path"], ep.get("start_rotation")).get("primitives", [])
+        turns = [p["type"] for p in prims if p["type"] in ("left_turn", "right_turn")]
+        out[str(ep["episode_id"])] = {
+            f"turn_{i+1}": t.split("_")[0] for i, t in enumerate(turns[:3])
+        }
+    return out
+
 def _select_turns(turns_meta: List[Dict], episode_id: int, cfg: AnnotatorConfig) -> List[Dict]:
     """
     Apply probabilistic anchor selection to match GT anchor_rate=16.5%.
@@ -271,6 +291,16 @@ async def run(
     p1c_ckpt_path = cfg.checkpoints_dir / "phase1c_turn_sides.json"
     p2_ckpt_path = cfg.checkpoints_dir / "phase2_instructions.json"
 
+    # Room whitelist and prompt examples follow the scene domain (see domains.py).
+    set_domain(cfg.domain)
+
+    # Turn directions are pure geometry, so compute them up front: phase 1c
+    # cannot name the object on the turn side without knowing which side it is.
+    turn_dirs = _turn_directions(episodes)
+    n_turns = sum(len(v) for v in turn_dirs.values())
+    print(f"Domain: {cfg.domain} | turn directions resolved for "
+          f"{len(turn_dirs)} episodes ({n_turns} turns)")
+
     # ── Phase 1a: Per-frame scene descriptions ────────────────────────────────
     p1a_ckpt = _load_ckpt(p1a_ckpt_path)
     if not skip_phase1:
@@ -281,6 +311,7 @@ async def run(
             base_url=cfg.vllm_base_url, model=cfg.vllm_model, api_key=cfg.vllm_api_key,
             concurrency=cfg.concurrency_vision,
             backend=cfg.backend, max_calls=cfg.max_calls, dry_run_dir=cfg.dry_run_dir,
+            domain=cfg.domain, turn_directions=turn_dirs,
         )
         _save_ckpt(p1a_ckpt, p1a_ckpt_path)
     else:
@@ -296,6 +327,7 @@ async def run(
             base_url=cfg.vllm_base_url, model=cfg.vllm_model, api_key=cfg.vllm_api_key,
             concurrency=cfg.concurrency_vision,
             backend=cfg.backend, max_calls=cfg.max_calls, dry_run_dir=cfg.dry_run_dir,
+            domain=cfg.domain, turn_directions=turn_dirs,
         )
         _save_ckpt(p1b_ckpt, p1b_ckpt_path)
     else:
@@ -311,6 +343,7 @@ async def run(
             base_url=cfg.vllm_base_url, model=cfg.vllm_model, api_key=cfg.vllm_api_key,
             concurrency=cfg.concurrency_vision,
             backend=cfg.backend, max_calls=cfg.max_calls, dry_run_dir=cfg.dry_run_dir,
+            domain=cfg.domain, turn_directions=turn_dirs,
         )
         _save_ckpt(p1c_ckpt, p1c_ckpt_path)
     else:

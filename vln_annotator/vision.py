@@ -13,35 +13,51 @@ import time
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 
+from .domains import get_domain, quoted
 from .llm_backend import batch_call_async, image_to_base64
 
 
 # ── Prompts ───────────────────────────────────────────────────────────────────
 
-_FRAME_PROMPT = (
-    "Describe this indoor scene for a navigation instruction. "
-    "In 1-2 sentences cover: the room type, dominant objects, and the most "
-    "prominent landmark visible. Be concrete and specific (colors, materials). "
-    "Example: 'Starting in a bright hallway with brown wooden double doors on "
-    "the right. The polished stone floor leads forward.'"
-)
+# Prompts are built per scene domain: the examples used to be house furniture
+# unconditionally, which pushed a transit station toward house vocabulary.
+# domains.HOUSE reproduces the original strings exactly. See domains.py.
 
-_MIDPOINT_PROMPT = (
-    "A robot navigating indoors has just stepped to this position. "
-    "Identify the single most prominent furniture item or object visible directly ahead. "
-    "Reply with a noun phrase only (2-5 words), e.g.: 'dark wooden dining table', "
-    "'grey upholstered sofa', 'white marble fireplace', 'tall wooden bookshelf'. "
-    "If only walls or floors are visible with no distinct furniture, reply: 'open space'. "
-    "Reply with ONLY the noun phrase, nothing else."
-)
+def _frame_prompt(dom) -> str:
+    return (
+        f"Describe this {dom.setting} scene for a navigation instruction. "
+        "In 1-2 sentences cover: the room type, dominant objects, and the most "
+        "prominent landmark visible. Be concrete and specific (colors, materials). "
+        f"Example: '{dom.frame_example}'"
+    )
 
-_TURN_SIDE_PROMPT = (
-    "Look at the object or landmark visible in the direction the robot is about to turn. "
-    "Give a 2-4 word noun phrase identifying this object (e.g. 'grey stone pillar', "
-    "'brown wooden cabinet', 'white kitchen counter'). "
-    "If nothing distinctive is visible, reply: 'nothing'. "
-    "Reply with ONLY the noun phrase."
-)
+
+def _midpoint_prompt(dom) -> str:
+    return (
+        f"A robot navigating {dom.navigating} has just stepped to this position. "
+        "Identify the single most prominent furniture item or object visible directly ahead. "
+        f"Reply with a noun phrase only (2-5 words), e.g.: {quoted(dom.midpoint_examples)}. "
+        "If only walls or floors are visible with no distinct furniture, reply: 'open space'. "
+        "Reply with ONLY the noun phrase, nothing else."
+    )
+
+
+def _turn_side_prompt(dom, direction: str = None) -> str:
+    # The original prompt said "the direction the robot is about to turn" without
+    # ever saying which direction that was. With a single image the model cannot
+    # know, so it named whatever was most prominent -- often on the wrong side.
+    # The direction is pure geometry and is now passed in.
+    where = (f"on the {direction}-hand side of this view"
+             if direction in ("left", "right")
+             else "in the direction the robot is about to turn")
+    return (
+        f"The robot is about to turn {direction}. " if direction in ("left", "right") else ""
+    ) + (
+        f"Look at the object or landmark visible {where}. "
+        f"Give a 2-4 word noun phrase identifying this object (e.g. {quoted(dom.landmark_examples)}). "
+        "If nothing distinctive is visible, reply: 'nothing'. "
+        "Reply with ONLY the noun phrase."
+    )
 
 _REJECT_MID_RE = re.compile(
     r'^(open\s+space|plain|featureless|empty|nothing|no\s+furniture|a\s+room|the\s+room|'
@@ -90,6 +106,8 @@ async def describe_frames(
     backend: str = "vllm",
     max_calls: "int | None" = None,
     dry_run_dir: "Path | None" = None,
+    domain: str = "house",
+    turn_directions: "Dict[str, Dict[str, str]] | None" = None,
     max_tokens: int = 80,
 ) -> Dict:
     """
@@ -98,6 +116,7 @@ async def describe_frames(
 
     Returns checkpoint dict: {episode_id: {"start": str, "turn_1": str, ...}}
     """
+    dom = get_domain(domain)
     tasks = []
     for ep in episodes:
         eid = str(ep["episode_id"])
@@ -108,7 +127,7 @@ async def describe_frames(
             for ext in ("jpg", "jpeg", "png"):
                 img = ep_dir / f"{label}.{ext}"
                 if img.exists():
-                    tasks.append({"id": f"{eid}:{label}", "prompt": _FRAME_PROMPT,
+                    tasks.append({"id": f"{eid}:{label}", "prompt": _frame_prompt(dom),
                                   "images": [img]})
                     break
 
@@ -145,6 +164,8 @@ async def classify_midpoints(
     backend: str = "vllm",
     max_calls: "int | None" = None,
     dry_run_dir: "Path | None" = None,
+    domain: str = "house",
+    turn_directions: "Dict[str, Dict[str, str]] | None" = None,
 ) -> Dict:
     """
     For each intermediate waypoint, identify the most prominent object ahead.
@@ -152,6 +173,7 @@ async def classify_midpoints(
     Reads midpoints.json from midpoints_dir/episode_XXXXXX/ (produced by the
     Habitat renderer). Returns checkpoint dict: {episode_id: {mid_1: str, ...}}
     """
+    dom = get_domain(domain)
     tasks = []
     for ep in episodes:
         eid = str(ep["episode_id"])
@@ -168,7 +190,7 @@ async def classify_midpoints(
         for frame in meta.get("frames", []):
             img_path = ep_dir / frame["path"]
             if img_path.exists():
-                tasks.append({"id": f"{eid}:{frame['label']}", "prompt": _MIDPOINT_PROMPT,
+                tasks.append({"id": f"{eid}:{frame['label']}", "prompt": _midpoint_prompt(dom),
                               "images": [img_path]})
 
     if not tasks:
@@ -205,6 +227,8 @@ async def describe_turn_sides(
     backend: str = "vllm",
     max_calls: "int | None" = None,
     dry_run_dir: "Path | None" = None,
+    domain: str = "house",
+    turn_directions: "Dict[str, Dict[str, str]] | None" = None,
 ) -> Dict:
     """
     At each turn viewpoint, describe the object visible in the turn direction.
@@ -212,6 +236,7 @@ async def describe_turn_sides(
 
     Returns checkpoint dict: {episode_id: {turn_1: str, turn_2: str, ...}}
     """
+    dom = get_domain(domain)
     tasks = []
     for ep in episodes:
         eid = str(ep["episode_id"])
@@ -222,7 +247,7 @@ async def describe_turn_sides(
             for ext in ("jpg", "jpeg", "png"):
                 img = ep_dir / f"turn_side_{label}.{ext}"
                 if img.exists():
-                    tasks.append({"id": f"{eid}:{label}", "prompt": _TURN_SIDE_PROMPT,
+                    tasks.append({"id": f"{eid}:{label}", "prompt": _turn_side_prompt(dom, (turn_directions or {}).get(eid, {}).get(label)),
                                   "images": [img]})
                     break
 
