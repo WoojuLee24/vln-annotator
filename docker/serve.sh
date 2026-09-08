@@ -24,13 +24,17 @@ PORT="${PORT:-8100}"
 HF_CACHE="${HF_CACHE:-/media/TrainDataset/hf_cache}"
 mkdir -p "$HF_CACHE"
 
+# -it only when a TTY is actually attached, so this works from scripts and CI.
+TTY=(-i)
+[[ -t 0 && -t 1 ]] && TTY=(-it)
+
 ENVFILE=()
 [[ -f "$REPO/keys.env" ]] && ENVFILE=(--env-file "$REPO/keys.env")
 
 echo "serving $MODEL  as 'cosmos'  port=$PORT  gpu_util=$GPU_UTIL  max_len=$MAX_LEN"
 echo "hf cache: $HF_CACHE"
 
-exec docker run --rm -it \
+exec docker run --rm "${TTY[@]}" \
   --gpus all --network host --ipc host \
   "${ENVFILE[@]}" \
   -v "$HF_CACHE":/hf \

@@ -17,6 +17,12 @@ from typing import List, Optional
 
 MARKER = "DRY_RUN__NO_MODEL_CALLED"
 
+# A run makes one batch_call_async call per phase (1a, 1b, 1c, 2), so a new
+# backend instance is built per phase. Truncate on the first instance only,
+# then append -- otherwise each phase erases the previous one's prompts and
+# the manifest ends up holding just the last phase.
+_TRUNCATED: set = set()
+
 
 class DryRunBackend:
     name = "dry"
@@ -26,7 +32,11 @@ class DryRunBackend:
         self.out_dir = Path(out_dir) if out_dir else Path("outputs/dry_run")
         self.out_dir.mkdir(parents=True, exist_ok=True)
         self._n = 0
-        self._manifest = (self.out_dir / "prompts.jsonl").open("w", encoding="utf-8")
+        path = self.out_dir / "prompts.jsonl"
+        key = str(path.resolve())
+        mode = "a" if key in _TRUNCATED else "w"
+        _TRUNCATED.add(key)
+        self._manifest = path.open(mode, encoding="utf-8")
 
     async def chat(
         self,
@@ -54,4 +64,6 @@ class DryRunBackend:
 
     async def aclose(self) -> None:
         self._manifest.close()
-        print(f"dry-run: wrote {self._n} prompts -> {self.out_dir / 'prompts.jsonl'}")
+        total = sum(1 for _ in (self.out_dir / "prompts.jsonl").open(encoding="utf-8"))
+        print(f"dry-run: +{self._n} prompts ({total} total) "
+              f"-> {self.out_dir / 'prompts.jsonl'}")
