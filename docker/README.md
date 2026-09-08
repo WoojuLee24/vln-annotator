@@ -83,6 +83,36 @@ explicit error.
 `gated=auto` means accepting the terms on the model page grants access
 immediately — there is no review queue.
 
+## Verified (2026-09-08)
+
+Smoke ladder, cheapest first, on this host:
+
+| # | check | result |
+|:--:|---|---|
+| 1 | image builds; `vllm`, `openai`, `numpy`, `pillow` importable | ok — vllm 0.28.0 / openai 3.3.1 / numpy 2.2.6 / pillow 12.3.0 |
+| 2 | `run.sh --help` (no GPU, no keys) | exit 0 |
+| 3 | `--dry-run`, 1 episode | all 4 phases logged: 5 prompts, 4 with images, 0 missing; output files owned by the invoking user |
+| 4 | remote Gemma, 1 episode, real images | 5/5 calls ok, 0 errors, ~2 s |
+
+Step 4 also answered the question that actually mattered — whether a VLM can
+name landmarks in a NuRec Gaussian render. It can:
+
+> `start`: "white-tiled transit station concourse with a yellow tactile paving strip … a prominent yellow directional sign hangs from the white ceiling"
+> `turn_1`: "clear glass double doors with blue horizontal stripes"
+> `mid_1`: "blue Pepsi vending machine"  ·  `turn_side_turn_1`: "glass sliding doors"
+>
+> instruction: *"Go forward, turn left at the glass sliding doors, and walk forward."*
+
+**One constraint this surfaced.** The generated `instruction_tokens` reached
+id 2584. The annotator encodes with the `vln_ce` vocabulary (2,711 words),
+while VLN-PE/CMA declares `vocab_size=2504` — they are different id spaces,
+not the same vocabulary at different sizes. Tokens are usable as-is for a
+`vln_ce` target; a `vln_pe`/CMA target must re-encode from
+`instruction_text`.
+
+Reproduce with the fixture under `data/fixture/` (one real `vln_ce` episode +
+real rendered frames, built by the snippet in the project notes).
+
 ## Unverified
 
 **Whether `vllm/vllm-openai:v0.28.0` ships sm_120 kernels.** This host is an
